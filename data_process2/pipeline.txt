@@ -1,0 +1,6 @@
+original_data -> [conv] -> [random_walk] -> /chr_sum -> processed_matrix (in range(0,1))
+-> diags/rows with num -> processed_data (spread to vector)
+
+processed_data -> encoder to {int(min(Q_concat.shape) * 0.2) - 1} always {cell_nums * 0.2 - 1}
+
+NET: encoder (size -> size*0.2 )

@@ -1,0 +1,9 @@
+v1::0.7     3000epochs      Loss = 4        lr = 1e-3
+v2::0.715   1000epochs      Loss = 2.7      在返回前加入relu，去除负值     lr = 1e-3
+v3::0.72    1000epochs      Loss = 2.53     在v2基础上继续训练            lr = 1e-4
+v4::0.37    1000epochs      Loss = 3.75     定点覆盖                     lr = 1e-3
+v5::0.69    1000epochs      Loss = 660      归一化（全除以最大值）         lr = 1e-3
+v6::0.75    1000epochs      Loss = 500      在v5基础上继续训练             lr = 1e-3
+v7::0.77-78 1000epochs      Loss = 430      在v6基础上继续训练（可能过拟合）  lr = 1e-3
+v8::0.62    1000epochs      Loss = 760      同v5，加入dropout            lr = 1e-3  
+加入dropout后Loss基本稳定在760      数据输出很相似?

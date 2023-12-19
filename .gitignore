@@ -1,0 +1,7 @@
+.idea
+__pycache__
+models
+model_test.py
+ttt.py
+*.swp
+*.xlsx
