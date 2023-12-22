@@ -1,12 +1,10 @@
+import json
 import os
-import sys
 import time
 import numpy as np
 import torch
 import torch.nn.functional as F
-from multiprocessing import Pool
 from scipy.sparse import csr_matrix
-from scipy.stats import chi2_contingency
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 
@@ -112,7 +110,7 @@ def hicluster_gpu(network, ngenes, nc, pad=1, rp=0.5, prct=20, ndim=20, is_X=Fal
         Q_concat = Q_concat.cpu().numpy()
         if prct > -1:
             thres = np.percentile(Q_concat, 100 - prct, axis=1)
-        Q_concat = (Q_concat > thres[:, None])
+            Q_concat = (Q_concat > thres[:, None])
         end_time = time.time()
         print('Load and impute chromosome', c, 'take', end_time - start_time, 'seconds')
         # TODO: why ?
@@ -123,7 +121,7 @@ def hicluster_gpu(network, ngenes, nc, pad=1, rp=0.5, prct=20, ndim=20, is_X=Fal
         pca = PCA(n_components=ndim)
         R_reduce = pca.fit_transform(Q_concat)
         matrix.append(R_reduce)
-        print(c)
+        print('PCA use time: ' + str(time.time() - end_time) + ' seconds')
     matrix = np.concatenate(matrix, axis=1)
     pca = PCA(n_components=min(matrix.shape) - 1)
     matrix_reduce = pca.fit_transform(matrix)
@@ -138,40 +136,20 @@ def get_subdirectories(folder_path: str):
 
 
 if __name__ == '__main__':
-    ngenes = [
-      250,
-      244,
-      198,
-      192,
-      181,
-      171,
-      160,
-      147,
-      142,
-      136,
-      135,
-      134,
-      116,
-      108,
-      103,
-      91,
-      82,
-      79,
-      60,
-      63,
-      49,
-      52,
-      155
-   ]
-    root_dir = 'Original_Datas/Ramani'
+    dataset = '4DN'
+    nc = 5
+    is_X = True
+    chr_num = 23
+    prct = 20
+
+    with open(os.path.join('../vectors', dataset, 'diag3', 'data_info.json'), 'r') as f:
+        ngenes = json.load(f)['chr_lens']
+    root_dir = os.path.join('../Original_Datas', dataset)
     label_dirs = get_subdirectories(root_dir)
     str2dig = {}
     x = []
     y = []
     network = []
-    nc = 4
-    is_X = True
-    chr_num = 23
 
     for i, label_name in enumerate(label_dirs):
         str2dig[label_name] = i
@@ -198,7 +176,7 @@ if __name__ == '__main__':
     #     print(np.count_nonzero(y == i))
 
     cluster_labels, matrix_reduced = hicluster_gpu(network=network, ngenes=ngenes, nc=nc, pad=1, rp=0.5
-                                                   , prct=20, ndim=20, is_X=is_X)
+                                                   , prct=prct, ndim=20, is_X=is_X)
 
     # print(len(cluster_labels))
     # print(cluster_labels)
@@ -213,3 +191,5 @@ if __name__ == '__main__':
 
     print("Adjusted Rand Index (ARI):", ari)
     print("Normalized Mutual Information (NMI):", nmi)
+
+    print('schicluster\tnc={}\tprct={}'.format(nc, prct))

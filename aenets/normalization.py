@@ -1,12 +1,19 @@
 import datetime
 import json
 import re
+import numpy as np
 import os
+import sys
 import time
 import numpy as np
 import torch
 import torch.nn.functional as F
+from multiprocessing import Pool
 from scipy.sparse import csr_matrix
+from scipy.stats import chi2_contingency
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
+from tqdm import tqdm
 
 
 def get_subdirectories(folder_path):
@@ -69,15 +76,9 @@ def random_walk_gpu(A, rp):
     return Q
 
 
-read_file_time = 0.0
-
-
 def impute_gpu(ngene, pad, rp, file_path):
-    global read_file_time
-    t = time.time()
     D = np.loadtxt(file_path)
     A = csr_matrix((D[:, 2], (D[:, 0], D[:, 1])), shape=(ngene, ngene)).toarray()
-    read_file_time += time.time() - t
     A = np.log2(A + A.T + 1)
     A = neighbor_ave_gpu(A, pad)
     if rp == -1:
@@ -93,7 +94,7 @@ def normalize_by_chr(ngene, pad, rp, file_path, mode='None'):
     assert mode in ['None', 'chr_max', 'chr_sum'], \
         print('normalize_mode should in [\'None\', \'chr_max\', \'chr_sum\']')
     if mode == 'None':
-        param = 1.0
+        param = 1
     elif mode == 'chr_max':
         param = torch.max(Q)
     elif mode == 'chr_sum':
@@ -103,7 +104,7 @@ def normalize_by_chr(ngene, pad, rp, file_path, mode='None'):
     return Q / param
 
 
-def myflatten(A, process_pattern: str = 'row', m: int = -1):
+def flatten(A, process_pattern: str = 'row', m: int = -1):
     if process_pattern == 'row':
         # 按行取
         # 获取上三角矩阵的索引
@@ -130,42 +131,27 @@ def myflatten(A, process_pattern: str = 'row', m: int = -1):
 
 
 def main():
-    # **********************************调参部分*******************************************
-    root_dir = '../../Original_Datas/Ramani'
+    root_dir = '../../../Downloads/CTPredictor/Data_filter/Ramani'
     chr_num = 23
-    target_dir = '../../vectors/Ramani/diag5'
-    processed_dir = '../../Processed_Datas/Ramani/Ramani_processed'
+    sub_dirs = get_subdirectories(root_dir)
+    target_dir = '../../Datas/vectors/Ramani/diag3'
+    processed_dir = '../../Datas/Ramani/Ramani_processed'
 
     pad = 0
     rp = -1
     mode = 'chr_max'
     process_pattern = 'diag'
-    m = 5
-    notes = 'None'
-    # ************************************************************************************
-
-    sub_dirs = get_subdirectories(root_dir)
+    m = 3
 
     chr_lens = get_max_chr_len(processed_dir, chr_num=chr_num)
     print(chr_lens)
-    # chr_lens = [250, 244, 198, 192, 181, 171, 160, 147, 142, 136, 135, 134, 116, 108, 103, 91, 82, 79, 60, 63, 49, 52,
-    #             155]
 
     start = time.time()
-
-    tt_normalize_by_chr_time = 0.0
-    tt_myflatten_time = 0.0
-    tt_read_file_time = 0.0
 
     for sub_dir in sub_dirs:
         sub_path = os.path.join(root_dir, sub_dir)
         target_sub_dir = os.path.join(target_dir, sub_dir)
         file_names = os.listdir(sub_path)
-
-        normalize_by_chr_time = 0.0
-        myflatten_time = 0.0
-        global read_file_time
-        read_file_time = 0.0
 
         for file_name in file_names:
             file_path = os.path.join(sub_path, file_name)
@@ -173,16 +159,9 @@ def main():
             cell_number = int(match.group(1))
             chromosome_number = int(match.group(2)) if match.group(2) != 'X' else chr_num
             ngene = chr_lens[chromosome_number - 1]
-            t1 = time.time()
             M = normalize_by_chr(ngene=ngene, pad=pad, rp=rp, file_path=file_path, mode=mode)
-            t2 = time.time()
             M = M.cpu().numpy()
-            M_vector = myflatten(M, process_pattern=process_pattern, m=m)
-            t3 = time.time()
-            # M_vector = M.flatten()
-
-            normalize_by_chr_time += t2 - t1
-            myflatten_time += t3 - t2
+            M_vector = flatten(M, process_pattern=process_pattern, m=m)
 
             # 将处理后的数据写入文件
             # 可以先用这个创建文件夹
@@ -191,18 +170,8 @@ def main():
             np.save(target_file, M_vector)
 
         print(sub_dir + ' has been processed!')
-        print('normalize use time: ' + str(normalize_by_chr_time) + ' seconds')
-        print('flatten use time: ' + str(myflatten_time) + ' seconds')
-        print('rd_fl use time: ' + str(read_file_time) + ' seconds')
-
-        tt_normalize_by_chr_time += normalize_by_chr_time
-        tt_myflatten_time += myflatten_time
-        tt_read_file_time += read_file_time
 
     print('use time: ' + str(time.time() - start))
-    print('total normalize use time: ' + str(tt_normalize_by_chr_time) + ' seconds')
-    print('total flatten use time: ' + str(tt_myflatten_time) + ' seconds')
-    print('total rd_fl use time: ' + str(tt_read_file_time) + ' seconds')
 
     data_info = {
         'root_dir': root_dir,
@@ -215,8 +184,7 @@ def main():
         'process_pattern': process_pattern,
         'm': m,
         'chr_lens': chr_lens,
-        'last_update': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        'notes': notes,
+        'last_update': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
 
     data_info_file_path = os.path.join(target_dir, 'data_info.json')

@@ -9,7 +9,6 @@ import os
 import time
 import numpy as np
 import sys
-from tqdm import tqdm as progress_bar
 from tqdm import trange
 
 sys.path.append('../aenets')
@@ -21,7 +20,7 @@ def get_subdirectories(folder_path: str):
     return subdirectories
 
 
-def make_datasets(network, ngenes, root_dir, is_X=False):
+def make_datasets(network, ngenes, root_dir, is_X, update_mask):
     datasets = []
     for c, ngene in enumerate(ngenes):
         labels = []
@@ -37,7 +36,7 @@ def make_datasets(network, ngenes, root_dir, is_X=False):
             Q_concat.append(np.load(file_name))
         # print(labels[112], file_names[112], Q_concat.__len__(), Q_concat[0].__len__())
         dataset = MyDataset(root_dir=root_dir, Q_concat=Q_concat, labels=labels, file_names=file_names
-                            , chr_num=c, is_mask=True, random_mask=True, mask_rate=0.1, update_mask=False,
+                            , chr_num=c, is_mask=True, random_mask=True, mask_rate=0.1, update_mask=update_mask,
                             is_train=True, is_shuffle=True)
         end_time = time.time()
         print('Load and make dataset for chromosome', c, 'take', end_time - start_time, 'seconds')
@@ -54,11 +53,11 @@ if __name__ == '__main__':
     # *******************************调参部分*****************************************
 
     # 加载数据位置
-    root_dir = '../vectors/Ramani/diag3'
+    root_dir = '../../vectors/Ramani/diag5_train'
     data_info_path = os.path.join(root_dir, 'data_info.json')
 
     # 模型保存文件
-    model_dir = '../models/Ramani/diag3'
+    model_dir = '../models/Ramani/diag5_train'
     os.makedirs(model_dir, exist_ok=True)
 
     # 加载ngenes
@@ -71,8 +70,15 @@ if __name__ == '__main__':
 
     # 是否使用训练过的模型继续训练
     is_pretrained = True
-    load_epochs = 2000
-    save_epochs = 2500
+    if is_pretrained:
+        load_epochs = 1000
+    else:
+        load_epochs = 'None'
+    save_epochs = 1500
+
+    batch_size = 256
+    lr = 1e-4
+    update_mask = False
 
     # ********************************************************************************
 
@@ -94,7 +100,8 @@ if __name__ == '__main__':
 
     network_zip = list(zip(network, y))
 
-    train_datasets = make_datasets(network=network_zip, ngenes=ngenes, root_dir=root_dir, is_X=is_X)
+    train_datasets = make_datasets(network=network_zip, ngenes=ngenes, root_dir=root_dir, is_X=is_X,
+                                   update_mask=update_mask)
     for train_dataset in train_datasets:
         print(train_dataset.datasize)
 
@@ -104,7 +111,7 @@ if __name__ == '__main__':
         c = 'X' if is_X and c == len(ngenes) - 1 else str(c + 1)
         load_model_path = os.path.join(model_dir, 'chr' + c + '_' + str(load_epochs) + 'epochs.pth')
         save_model_path = os.path.join(model_dir, 'chr' + c + '_' + str(save_epochs) + 'epochs.pth')
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=256, shuffle=True)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
         ipt_size = train_dataset.datasize
         opt_size = int(min(len(train_dataset), ipt_size) * 0.2) - 1
@@ -125,7 +132,7 @@ if __name__ == '__main__':
 
         # 定义损失函数和优化器
         criterion = nn.MSELoss()
-        optimizer = optim.Adam(model.parameters(), lr=1e-3)
+        optimizer = optim.Adam(model.parameters(), lr=lr)
 
         # 训练模型
         num_epochs = save_epochs - load_epochs if is_pretrained else save_epochs
@@ -169,7 +176,11 @@ if __name__ == '__main__':
         print('saving model...')
         torch.save(model.state_dict(), save_model_path)
         print('model saved!')
-        time.sleep(5)
+        # time.sleep(5)
 
     print('total use time: ' + str(time.time() - start_time) + 'seconds')
-
+    print('root_dir={}\nload_epochs={}\nsave_epochs={}\nbatch_size={}\nlr={}\nupdate_mask={}'.format(root_dir,
+                                                                                                     load_epochs,
+                                                                                                     save_epochs,
+                                                                                                     batch_size, lr,
+                                                                                                     update_mask))
